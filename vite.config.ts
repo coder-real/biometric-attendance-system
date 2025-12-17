@@ -19,6 +19,6 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, '.'),
         }
       },
-      base: '/Smart-Attendance-System/',
+      base: '/biometric-attendance-system/',
     };
 });

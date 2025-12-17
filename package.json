@@ -1,9 +1,9 @@
 {
-  "name": "firebase-admin-auth",
+  "name": "biometric-attendance-system",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://coder-real.github.io/Smart-Attendance-System",
+  "homepage": "https://coder-real.github.io/biometric-attendance-system",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
