@@ -1,147 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import { db } from "../services/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { Course, Student } from "../types";
+import { Course, Student, AccessCardData } from "../types";
+import AccessCard from "./AccessCard";
+import { CheckCircle, XCircle, Fingerprint, Loader } from "lucide-react";
 
 type ScanState = "idle" | "scanning" | "success" | "error";
-
-interface VerifiedStudentData {
-  name: string;
-  matricNumber: string;
-  department: string;
-  level: string;
-  course: string;
-  attendance: string;
-}
-
-const VerificationScanner = ({
-  state,
-  message,
-}: {
-  state: ScanState;
-  message: string;
-}) => {
-  const stateClasses = {
-    idle: "text-gray-400",
-    scanning: "text-blue-400",
-    success: "text-green-400",
-    error: "text-red-400",
-  };
-
-  return (
-    <div className="relative w-40 h-40 flex flex-col items-center justify-center">
-      {state === "scanning" && (
-        <div className="absolute top-0 left-0 w-full h-full">
-          <div className="absolute top-0 left-0 w-full h-1 bg-blue-500 rounded-full animate-scan"></div>
-        </div>
-      )}
-      <svg
-        className={`w-32 h-32 transition-colors duration-300 ${stateClasses[state]}`}
-        viewBox="0 0 100 100"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M50 25C44.4772 25 40 29.4772 40 35V40"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M50 75C52.7614 75 55 72.7614 55 70V55"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M50 75C47.2386 75 45 72.7614 45 70V65"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M50 25C55.5228 25 60 29.4772 60 35V45C60 47.7614 57.7614 50 55 50"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M30 55V45C30 36.7157 36.7157 30 45 30"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M70 55V45C70 36.7157 63.2843 30 55 30"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M30 55C30 63.2843 36.7157 70 45 70"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <path
-          d="M70 55C70 63.2843 63.2843 70 55 70"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-      </svg>
-      {state === "success" && (
-        <svg
-          className="absolute w-16 h-16 text-green-400"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M5 13l4 4L19 7"
-          />
-        </svg>
-      )}
-      {state === "error" && (
-        <svg
-          className="absolute w-16 h-16 text-red-400"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-      )}
-      <p
-        className={`absolute -bottom-2 text-sm font-medium text-center transition-colors duration-300 ${stateClasses[state]}`}
-      >
-        {message}
-      </p>
-    </div>
-  );
-};
 
 export default function ExamVerification() {
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [statusMessage, setStatusMessage] = useState(
     "Click button to begin verification"
   );
-  const [verifiedStudentData, setVerifiedStudentData] =
-    useState<VerifiedStudentData | null>(null);
+  const [verifiedData, setVerifiedData] = useState<AccessCardData | null>(null);
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    ws.current = new WebSocket("ws://localhost:8080");
+    ws.current = new WebSocket("ws://localhost:5000"); // Using port 5000 based on FingerprintPortal
     let isMounted = true;
 
     ws.current.onopen = () => {
@@ -155,13 +30,38 @@ export default function ExamVerification() {
     };
     ws.current.onmessage = (event) => {
       if (!isMounted) return;
-      const message = event.data.toString();
-      const [status, data] = message.split(":", 2);
+      
+      let messageStr = event.data.toString();
+      let status = "", data: any = "";
+      
+      try {
+        const jsonData = JSON.parse(messageStr);
+        if (jsonData.type === "VERIFY_RESPONSE") {
+             if (jsonData.success) {
+                 handleSuccessfulVerification(jsonData.id.toString());
+                 return; 
+             } else {
+                 status = "ERROR";
+                 data = "No match found";
+             }
+        } else if (jsonData.type === "ESP32_STATUS") {
+            // Ignore status updates here for now
+            return;
+        } else {
+             status = jsonData.type || "UNKNOWN";
+             data = jsonData.data || "";
+        }
+      } catch (e) {
+        const parts = messageStr.split(":", 2);
+        status = parts[0];
+        data = parts[1];
+      }
+
       if (status === "SUCCESS") handleSuccessfulVerification(data);
       else if (status === "STATUS") setStatusMessage(data);
-      else {
+      else if (status !== "ATTENDANCE") {
         setScanState("error");
-        setStatusMessage(data || "Verification failed.");
+        setStatusMessage(typeof data === 'string' ? data : "Verification failed");
       }
     };
 
@@ -177,7 +77,7 @@ export default function ExamVerification() {
       timer = setTimeout(() => {
         setScanState("idle");
         setStatusMessage("Click button to begin verification");
-        setVerifiedStudentData(null);
+        setVerifiedData(null);
       }, 5000);
     }
     return () => clearTimeout(timer);
@@ -218,8 +118,6 @@ export default function ExamVerification() {
       }
 
       const coursesSnap = await getDocs(collection(db, "courses"));
-      // FIX: Explicitly typing the Map generic to prevent TypeScript from inferring it as Map<unknown, unknown>,
-      // which caused errors when accessing properties on `courseData`.
       const coursesMap = new Map<string, Omit<Course, "id">>(
         coursesSnap.docs.map((doc) => [
           doc.id,
@@ -282,14 +180,15 @@ export default function ExamVerification() {
 
       // 5. Grant Access
       setScanState("success");
-      setVerifiedStudentData({
+      setStatusMessage("Verified");
+      setVerifiedData({
         name: studentData.name,
-        matricNumber: studentData.studentId,
+        studentId: studentData.studentId,
         department: studentData.department,
-        level: studentData.level,
-        course: `${matchedCourseData.name} (${matchedCourseData.code})`,
-        attendance: `${attendancePercentage}%`,
+        courseName: `${matchedCourseData.name} (${matchedCourseData.code})`,
+        attendancePercentage: attendancePercentage,
       });
+
     } catch (error) {
       console.error("Verification Error:", error);
       setScanState("error");
@@ -308,77 +207,113 @@ export default function ExamVerification() {
     ws.current.send("VERIFY_FINGERPRINT");
   };
 
+  const handleCloseCard = () => {
+    setVerifiedData(null);
+    setScanState("idle");
+    setStatusMessage("Click button to begin verification");
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4 text-white">
-      <style>{`.animate-scan { animation: scan 1.5s ease-in-out infinite; } @keyframes scan { 0% { top: 0; } 100% { top: 100%; } } .animate-fade-in { animation: fadeIn 0.5s ease-in-out; } @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }`}</style>
+    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6">
+      
+      {verifiedData && <AccessCard data={verifiedData} onClose={handleCloseCard} />}
 
-      <div className="w-full max-w-md text-center">
-        {scanState !== "success" && (
-          <>
-            <h1 className="text-3xl font-bold">Exam Verification</h1>
-            <p className="text-gray-400 mt-2 mb-8">
-              Place your finger on the scanner to continue
-            </p>
-            <div className="flex justify-center mb-10">
-              <VerificationScanner state={scanState} message={statusMessage} />
-            </div>
-          </>
-        )}
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-12 relative">
+          <h1 className="text-3xl font-semibold text-gray-300 mb-2">
+            Exam Verification
+          </h1>
+          <p className="text-gray-500">
+            Verify eligibility for exam entry
+          </p>
+        </div>
 
-        {scanState === "success" && verifiedStudentData ? (
-          <div className="bg-gray-800 border border-gray-700 shadow-2xl rounded-lg p-6 w-full max-w-md animate-fade-in">
-            <h2 className="text-xl font-bold text-center mb-4 border-b border-gray-600 pb-2">
-              EXAM VERIFICATION
-            </h2>
-            <div className="space-y-2 text-left text-lg">
-              <div className="flex justify-between">
-                <strong>Name:</strong> <span>{verifiedStudentData.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <strong>Matric Number:</strong>{" "}
-                <span>{verifiedStudentData.matricNumber}</span>
-              </div>
-              <div className="flex justify-between">
-                <strong>Department:</strong>{" "}
-                <span>{verifiedStudentData.department}</span>
-              </div>
-              <div className="flex justify-between">
-                <strong>Level:</strong> <span>{verifiedStudentData.level}</span>
-              </div>
-              <div className="flex justify-between">
-                <strong>Course:</strong>{" "}
-                <span>{verifiedStudentData.course}</span>
-              </div>
-              <div className="flex justify-between">
-                <strong>Attendance:</strong>{" "}
-                <span>{verifiedStudentData.attendance}</span>
-              </div>
-            </div>
-            <div className="text-center mt-4 pt-4 border-t border-gray-600">
-              <p className="text-2xl font-bold text-green-400">
-                Status: Access Granted ✅
-              </p>
-              <button
-                onClick={() => {
-                  setScanState("idle");
-                  setStatusMessage("Click button to begin verification");
-                  setVerifiedStudentData(null);
-                }}
-                className="mt-6 w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-800"
+        {/* Main Card */}
+        <div className="bg-gray-800 rounded-3xl shadow-lg p-8">
+          {/* Icon Container */}
+          <div className="flex justify-center mb-8">
+            <div className="relative">
+              {/* Animated glow effect */}
+              <div
+                className={`absolute inset-0 rounded-full blur-2xl opacity-20 transition-all duration-500 ${
+                  scanState === "scanning"
+                    ? "bg-blue-500 scale-150"
+                    : scanState === "success"
+                    ? "bg-green-500 scale-150"
+                    : scanState === "error"
+                    ? "bg-red-500 scale-150"
+                    : "bg-transparent"
+                }`}
+              />
+
+              {/* Icon circle */}
+              <div
+                className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  scanState === "scanning"
+                    ? "bg-blue-50 border-2 border-blue-500"
+                    : scanState === "success"
+                    ? "bg-green-50 border-2 border-green-500"
+                    : scanState === "error"
+                    ? "bg-red-50 border-2 border-red-500"
+                    : "bg-gray-50 border-2 border-gray-200"
+                }`}
               >
-                Proceed to Exam
-              </button>
+                {scanState === "scanning" && (
+                  <Loader className="w-12 h-12 text-blue-600 animate-spin" />
+                )}
+                {scanState === "success" && (
+                  <CheckCircle className="w-12 h-12 text-green-600" />
+                )}
+                {scanState === "error" && (
+                  <XCircle className="w-12 h-12 text-red-600" />
+                )}
+                {scanState === "idle" && (
+                  <Fingerprint className="w-12 h-12 text-gray-400" />
+                )}
+              </div>
             </div>
           </div>
-        ) : (
+
+          {/* Status Message */}
+          <div className="text-center mb-8">
+            <p
+              className={`text-lg font-semibold transition-all duration-300 ${
+                scanState === "scanning"
+                  ? "text-blue-600"
+                  : scanState === "success"
+                  ? "text-green-600"
+                  : scanState === "error"
+                  ? "text-red-600"
+                  : "text-gray-300"
+              }`}
+            >
+              {statusMessage}
+            </p>
+          </div>
+
+          {/* Action Button */}
           <button
             onClick={handleStartVerification}
             disabled={scanState === "scanning"}
-            className="w-full max-w-sm flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className={`w-full py-4 rounded-xl font-medium text-base transition-all duration-200 ${
+              scanState === "scanning"
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] shadow-md hover:shadow-lg"
+            }`}
           >
-            {scanState === "scanning" ? "Verifying..." : "Start Verification"}
+            {scanState === "scanning"
+              ? "Verifying..."
+              : "Start Verification"}
           </button>
-        )}
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-8">
+          <p className="text-sm text-gray-400">
+            Secured by Dern Technology
+          </p>
+        </div>
       </div>
     </div>
   );
