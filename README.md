@@ -2,6 +2,8 @@
 
 > A real-time, GPS-enabled fingerprint attendance system combining ESP32 hardware, React frontend, and Firebase backend for secure, location-verified attendance management.
 
+Link to the project: https://coder-real.github.io/Smart-Attendance-System
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![React](https://img.shields.io/badge/React-19.2.0-blue.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-blue.svg)](https://www.typescriptlang.org/)
