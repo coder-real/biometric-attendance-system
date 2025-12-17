@@ -1,0 +1,5 @@
+
+{
+  "name": "Firebase Admin Auth",
+  "description": "A React application demonstrating Firebase email/password authentication for an admin dashboard. It includes protected routes, login persistence with onAuthStateChanged, and user data fetching from Firestore using the modular v9 SDK."
+}
