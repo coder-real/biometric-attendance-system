@@ -127,7 +127,7 @@ This system addresses these challenges through:
 
 This project is licensed under the **MIT License**.
 
-Copyright (c) 2024 [Your Name]
+Copyright (c) 2024 Nder Anthony
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -141,26 +141,3 @@ copies or substantial portions of the Software.
 ```
 
 ---
-
-## 👨‍💻 Author
-
-**[Nder Anthony]**
-- 🎓 Electrical Electronics Engineering Student, Joseph Sarwuan Tarka University
-- 💼 GitHub: [@yourusername](https://github.com/yourusername)
-- 💼 LinkedIn: [Your Profile](https://linkedin.com/in/yourprofile)
-- 📧 Email: nderanthony60@gmail.com
-
----
-
-## 🙏 Acknowledgments
-
-Special thanks to:
-
-- **Firebase Team** - For providing excellent backend infrastructure
-- **OpenStreetMap Contributors** - For free geocoding services
-- **Adafruit** - For comprehensive fingerprint sensor libraries
-- **u-blox** - For reliable GPS module documentation
-- **React Community** - For amazing tools and libraries
-- **My Project Supervisor** - For guidance and support
-- **FUTO Department of Computer Engineering** - For resources and facilities
-
