@@ -7,7 +7,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { Course, AccessCardData } from "../types";
-import AccessCard from "./AccessCard";
+import AttendanceCard from "./AttendanceCard";
 import { CheckCircle, XCircle, Fingerprint, Loader, Satellite, Wifi } from "lucide-react";
 
 export default function FingerprintPortal() {
@@ -78,6 +78,15 @@ export default function FingerprintPortal() {
         } else if (jsonData.type === "SIGNED_OUT") {
             setScanState("success");
             setStatusMessage(`${jsonData.studentName}: Signed Out`);
+            // Show the card in "exit" mode
+            setCardData({
+                name: jsonData.studentName,
+                studentId: jsonData.studentId,
+                department: jsonData.department,
+                courseName: jsonData.courseName,
+                attendancePercentage: jsonData.attendancePercentage,
+                status: 'exit'
+            });
             return;
         } else if (jsonData.type === "SESSION_COMPLETED") {
             setScanState("error");
@@ -306,7 +315,7 @@ export default function FingerprintPortal() {
   return (
     <div className="min-h-screen  bg-black-800  flex flex-col items-center justify-center p-6">
       
-      {cardData && <AccessCard data={cardData} onClose={handleCloseCard} />}
+      {cardData && <AttendanceCard data={cardData} onClose={handleCloseCard} />}
 
       <div className="w-full max-w-md">
         {/* Header */}

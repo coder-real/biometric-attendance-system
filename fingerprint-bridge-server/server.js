@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 // --- CONFIGURATION ---
 const WS_PORT = 5000;
-const ESP32_IP = "10.10.0.74"; // Your ESP32's IP address
+const ESP32_IP = "192.168.137.116"; // Your ESP32's IP address 192.168.137.116
 
 
 const ESP32_PORT = 8080; // ESP32 WebSocket server port
@@ -311,6 +311,20 @@ wss.on("connection", (ws, req) => {
 
 // Handle commands from web clients
 function handleWebClientCommand(message) {
+  // Try to parse as JSON first (for inter-client communication)
+  try {
+      if (message.trim().startsWith("{")) {
+          const jsonMsg = JSON.parse(message);
+          if (jsonMsg.type === "SIGNED_OUT" || jsonMsg.type === "SESSION_COMPLETED") {
+              console.log(`Broadcasting ${jsonMsg.type} for ${jsonMsg.studentName}`);
+              broadcastToWebClients(jsonMsg);
+              return;
+          }
+      }
+  } catch (e) {
+      // Not JSON, continue with legacy commands
+  }
+
   let command = "";
 
   if (message.startsWith("DELETE_FINGERPRINT:")) {

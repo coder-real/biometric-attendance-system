@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { db } from "../services/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { Course, Student, AccessCardData } from "../types";
-import AccessCard from "./AccessCard";
+import ExamCard from "./ExamCard";
 import { CheckCircle, XCircle, Fingerprint, Loader } from "lucide-react";
 
 type ScanState = "idle" | "scanning" | "success" | "error";
@@ -44,6 +44,18 @@ export default function ExamVerification() {
                  status = "ERROR";
                  data = "No match found";
              }
+        } else if (jsonData.type === "SIGNED_OUT") {
+             setScanState("success");
+             setStatusMessage(`${jsonData.studentName}: Signed Out`);
+             setVerifiedData({
+                name: jsonData.studentName,
+                studentId: jsonData.studentId,
+                department: jsonData.department,
+                courseName: jsonData.courseName,
+                attendancePercentage: jsonData.attendancePercentage,
+                status: 'exit'
+             });
+             return;
         } else if (jsonData.type === "ESP32_STATUS") {
             // Ignore status updates here for now
             return;
@@ -216,7 +228,7 @@ export default function ExamVerification() {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6">
       
-      {verifiedData && <AccessCard data={verifiedData} onClose={handleCloseCard} />}
+      {verifiedData && <ExamCard data={verifiedData} onClose={handleCloseCard} />}
 
       <div className="w-full max-w-md">
         {/* Header */}

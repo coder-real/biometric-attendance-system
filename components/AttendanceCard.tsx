@@ -1,17 +1,14 @@
 import React, { useRef } from "react";
 import type { AccessCardData } from "../types";
 
-interface AccessCardProps {
+interface AttendanceCardProps {
   data: AccessCardData;
   onClose: () => void;
 }
 
-export default function AccessCard({ data, onClose }: AccessCardProps) {
+export default function AttendanceCard({ data, onClose }: AttendanceCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
-
-  const handleDownload = () => {
-      // Keep existing download logic for now
-  };
+  const isExit = data.status === 'exit';
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -25,10 +22,10 @@ export default function AccessCard({ data, onClose }: AccessCardProps) {
             <div className="bg-gray-100 px-6 py-3 border-b border-gray-200 flex justify-between items-center">
                 <div className="flex items-center space-x-2">
                     <div className={`w-2 h-2 rounded-full animate-pulse ${
-                        data.status === 'exit' ? 'bg-orange-500' : 'bg-green-500' 
+                        isExit ? 'bg-orange-500' : 'bg-green-500' 
                     }`}></div>
                     <span className="text-xs font-bold text-gray-500 tracking-widest uppercase">
-                        {data.status === 'exit' ? 'SIGNED OUT' : 'BIOMETRIC VERIFIED'}
+                        ATTENDANCE LOG
                     </span>
                 </div>
                 <div className="flex items-center space-x-1">
@@ -44,14 +41,14 @@ export default function AccessCard({ data, onClose }: AccessCardProps) {
 
                 <div className="relative z-10 text-center">
                     <div className={`inline-block p-1 rounded-full bg-gradient-to-br mb-4 shadow-lg ${
-                        data.status === 'exit' ? 'from-orange-500 to-red-600' : 'from-blue-500 to-indigo-600'
+                        isExit ? 'from-orange-500 to-red-600' : 'from-blue-500 to-indigo-600'
                     }`}>
                          <div className="bg-white p-3 rounded-full">
-                            <svg className={`w-10 h-10 ${data.status === 'exit' ? 'text-orange-600' : 'text-indigo-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                {data.status === 'exit' ? (
+                            <svg className={`w-10 h-10 ${isExit ? 'text-orange-600' : 'text-indigo-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                {isExit ? (
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                                 ) : (
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
                                 )}
                             </svg>
                          </div>
@@ -62,33 +59,17 @@ export default function AccessCard({ data, onClose }: AccessCardProps) {
 
                     <div className="my-6 border-t border-gray-100"></div>
 
-                    <div className="grid grid-cols-2 gap-4 text-left">
-                        <div>
-                             <p className="text-xs text-gray-400 uppercase font-semibold">Department</p>
-                             <p className="text-sm font-bold text-gray-800">{data.department}</p>
-                        </div>
-                        <div>
-                             <p className="text-xs text-gray-400 uppercase font-semibold">Course</p>
-                             <p className="text-sm font-bold text-gray-800 truncate">{data.courseName}</p>
+                    <div className="space-y-4">
+                        <div className={`p-4 rounded-xl border ${
+                            isExit ? 'bg-orange-50 border-orange-100 text-orange-800' : 'bg-blue-50 border-blue-100 text-blue-800'
+                        }`}>
+                            <p className="font-medium text-lg">
+                                {isExit ? "Just signed out of" : "Just signed in to"}
+                            </p>
+                            <p className="font-bold text-xl mt-1">{data.courseName}</p>
                         </div>
                     </div>
 
-                    <div className="mt-6 bg-gray-50 rounded-xl p-4 border border-gray-100">
-                        <div className="flex justify-between items-end mb-2">
-                             <span className="text-sm font-medium text-gray-600">Attendance Rate</span>
-                             <span className={`text-2xl font-bold ${data.status === 'exit' ? 'text-orange-600' : 'text-indigo-600'}`}>
-                                 {data.attendancePercentage}%
-                             </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                                className={`h-2 rounded-full transition-all duration-1000 ${
-                                    data.status === 'exit' ? 'bg-gradient-to-r from-orange-500 to-red-600' : 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                }`}
-                                style={{ width: `${data.attendancePercentage}%` }}
-                            ></div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -98,7 +79,7 @@ export default function AccessCard({ data, onClose }: AccessCardProps) {
                     onClick={onClose}
                     className="text-gray-500 hover:text-gray-800 font-medium text-sm transition-colors"
                 >
-                    Close Verification
+                    Close
                 </button>
             </div>
         </div>

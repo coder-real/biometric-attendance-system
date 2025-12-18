@@ -78,6 +78,7 @@ export interface AccessCardData {
   department: string;
   courseName: string;
   attendancePercentage: number;
+  status?: "entry" | "exit";
 }
 
 export interface BridgeStatus {

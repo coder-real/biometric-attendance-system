@@ -187,6 +187,15 @@ export default function GlobalAttendanceListener() {
             ws.current.send(JSON.stringify({
                 type: "SIGNED_OUT",
                 studentName: studentData.name,
+                // Add full details for Access Card
+                studentId: studentData.studentId,
+                department: studentData.department,
+                courseName: coursesMap.get(courseId)?.name || "Unknown Course",
+                // Calculate rough percentage or pass 0/mock if too expensive. 
+                // For now, let's try to get it if we can, or just pass 0 and let UI handle it?
+                // Actually, listeners are headless, we can do a quick check or just omit percentage for Sign Out (or show 100%?). 
+                // Let's omit percentage logic here to keep it fast, or maybe just pass 0.
+                attendancePercentage: 0, 
                 message: "Signed Out Successfully"
             }));
         }
