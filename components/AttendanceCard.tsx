@@ -9,6 +9,7 @@ interface AttendanceCardProps {
 export default function AttendanceCard({ data, onClose }: AttendanceCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const isExit = data.status === 'exit';
+  const isEntry = data.status === 'entry' || !data.status; // Default to entry if no status
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">

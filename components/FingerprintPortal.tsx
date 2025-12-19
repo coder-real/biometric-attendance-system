@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { Course, AccessCardData } from "../types";
 import AttendanceCard from "./AttendanceCard";
+import StatusModal from "./StatusModal";
 import { CheckCircle, XCircle, Fingerprint, Loader, Satellite, Wifi } from "lucide-react";
 
 export default function FingerprintPortal() {
@@ -17,6 +18,15 @@ export default function FingerprintPortal() {
   const [statusMessage, setStatusMessage] = useState("Initializing...");
   const [gpsStatus, setGpsStatus] = useState<"searching" | "ready" | "offline">("offline");
   const [cardData, setCardData] = useState<AccessCardData | null>(null);
+  
+  // New state for Error/Status Modal
+  const [statusModal, setStatusModal] = useState<{
+    isOpen: boolean;
+    type: 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({ isOpen: false, type: 'info', title: '', message: '' });
+
   const ws = useRef<WebSocket | null>(null);
   const hasNotifiedReady = useRef(false);
 
@@ -45,16 +55,11 @@ export default function FingerprintPortal() {
         // Handle GPS/Status Updates
         if (jsonData.type === "ESP32_STATUS") {
              const d = jsonData.data;
-             
-             // Check if GPS has a fix
              const hasFix = d.gpsFixed === true && d.satellites > 0;
-             
              if (hasFix) {
                  if (gpsStatus !== "ready") {
-                     console.log("🛰️ GPS Ready:", d.satellites, "satellites");
                      setGpsStatus("ready");
                      setStatusMessage("Ready to authenticate");
-                     
                      if (!hasNotifiedReady.current) {
                          hasNotifiedReady.current = true;
                      }
@@ -69,16 +74,29 @@ export default function FingerprintPortal() {
         }
 
         if (jsonData.type === "ATTENDANCE") {
-            handleSuccessfulVerification(jsonData.data.id, jsonData.data);
+            setScanState("success");
+            setStatusMessage("Signed In");
+            setCardData({
+                name: jsonData.studentName || jsonData.data?.studentName || "Student",
+                studentId: jsonData.studentId || jsonData.data?.studentId || "N/A",
+                department: jsonData.department || jsonData.data?.department || "N/A",
+                courseName: jsonData.courseName || jsonData.data?.courseName || "Course",
+                attendancePercentage: jsonData.attendancePercentage || jsonData.data?.attendancePercentage || 0,
+                status: 'entry'
+            });
             return;
         } else if (jsonData.type === "DUPLICATE_ATTENDANCE") {
-            setScanState("error");
-            setStatusMessage(`${jsonData.studentName}: Attendance already taken`);
+            setStatusModal({
+                isOpen: true,
+                type: 'warning',
+                title: 'Already Marked',
+                message: `${jsonData.studentName}: Attendance has already been taken for this session.`
+            });
+            setScanState("idle");
             return;
         } else if (jsonData.type === "SIGNED_OUT") {
             setScanState("success");
             setStatusMessage(`${jsonData.studentName}: Signed Out`);
-            // Show the card in "exit" mode
             setCardData({
                 name: jsonData.studentName,
                 studentId: jsonData.studentId,
@@ -89,19 +107,50 @@ export default function FingerprintPortal() {
             });
             return;
         } else if (jsonData.type === "SESSION_COMPLETED") {
-            setScanState("error");
-            setStatusMessage(`${jsonData.studentName}: Session Closed`);
-            return;
+             setStatusModal({
+                 isOpen: true,
+                 type: 'info',
+                 title: 'Session Closed',
+                 message: `${jsonData.studentName}: You have already signed out of this session.`
+             });
+             setScanState("idle");
+             return;
+        } else if (jsonData.type === "NO_ACTIVE_SESSION") {
+             setStatusModal({
+                 isOpen: true,
+                 type: 'error',
+                 title: 'No Session',
+                 message: `${jsonData.studentName}: There are no active sessions available right now.`
+             });
+             setScanState("idle");
+             return;
+        } else if (jsonData.type === "NO_MATCHING_SESSION") {
+             setStatusModal({
+                 isOpen: true,
+                 type: 'error',
+                 title: 'Wrong Session',
+                 message: `${jsonData.studentName}: No active session matches your Department (${jsonData.department}) and Level.`
+             });
+             setScanState("idle");
+             return;
         } else if (jsonData.type === "ENROLL_RESPONSE") {
             status = jsonData.success ? "SUCCESS" : "ERROR";
             data = jsonData.error || jsonData.id || "Enrollment failed";
         } else if (jsonData.type === "VERIFY_RESPONSE") {
              if (jsonData.success) {
-                 handleSuccessfulVerification(jsonData.id.toString());
+                 setScanState("success");
+                 setStatusMessage("Fingerprint verified, processing...");
                  return; 
              } else {
-                 status = "ERROR";
-                 data = "No match found";
+                 setStatusModal({
+                     isOpen: true,
+                     type: 'error',
+                     title: 'Not Recognized',
+                     message: 'Fingerprint did not match any student record.'
+                 });
+                 setScanState("error");
+                 setStatusMessage("Fingerprint not recognized");
+                 return;
              }
         } else {
              status = jsonData.type || "UNKNOWN";
@@ -113,17 +162,10 @@ export default function FingerprintPortal() {
       }
 
       if (status === "SUCCESS") {
-        handleSuccessfulVerification(data);
+        // Legacy handling if needed
       } else if (status === "STATUS") {
-        // Only update status if it's a meaningful user message and NOT during GPS sync
-        // We prioritize GPS sync messaging until ready
         if (gpsStatus === "ready" && typeof data === 'string' && data.length < 50) {
             setStatusMessage(data);
-        }
-      } else {
-        if (status !== "ATTENDANCE") {
-            setScanState("error");
-            setStatusMessage(typeof data === 'string' ? data : "Verification failed");
         }
       }
     };
@@ -146,19 +188,17 @@ export default function FingerprintPortal() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    // Reset state after success or error, but wait a bit if it was success/error
+    // Reset state after success or error (short delay)
     if (scanState === "error" || scanState === "success") {
       timer = setTimeout(() => {
-        // Only reset if no card is showing (card handles its own close or timeout)
-        if (!cardData) {
+        if (!cardData && !statusModal.isOpen) {
             setScanState("idle");
-            // restore appropriate message
             setStatusMessage(gpsStatus === "ready" ? "Ready to authenticate" : "Syncing Satellite Data...");
         }
       }, 4000);
     }
     return () => clearTimeout(timer);
-  }, [scanState, cardData, gpsStatus]);
+  }, [scanState, cardData, statusModal.isOpen, gpsStatus]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -172,132 +212,24 @@ export default function FingerprintPortal() {
     return () => clearTimeout(timer);
   }, [cardData, gpsStatus]);
 
-  const handleSuccessfulVerification = async (fingerprintId: string, gpsData?: any) => {
-    try {
-      const studentsRef = collection(db, "students");
-      const q = query(
-        studentsRef,
-        where("fingerprintTemplate", "==", fingerprintId.toString())
-      );
-      const studentSnapshot = await getDocs(q);
-
-      if (studentSnapshot.empty) {
-        setScanState("error");
-        setStatusMessage("Unknown Identity");
-        return;
-      }
-
-      interface Student {
-        id: string;
-        name: string;
-        studentId: string;
-        department: string;
-        level: string;
-        fingerprintTemplate: string;
-      }
-
-      const studentDoc = studentSnapshot.docs[0];
-      const studentData = {
-        id: studentDoc.id,
-        ...(studentDoc.data() as Omit<Student, "id">),
-      };
-
-      interface Session {
-        id: string;
-        courseId: string;
-        active: boolean;
-      }
-
-      const sessionsRef = collection(db, "sessions");
-      const activeSessionsQuery = query(
-        sessionsRef,
-        where("active", "==", true)
-      );
-      const activeSessionsSnapshot = await getDocs(activeSessionsQuery);
-
-      let matchedSession: Session | null = null;
-      let courseName = "Common Entry";
-
-      if (!activeSessionsSnapshot.empty) {
-        const coursesRef = collection(db, "courses");
-        const coursesSnapshot = await getDocs(coursesRef);
-        const coursesMap = new Map<string, Omit<Course, "id">>(
-            coursesSnapshot.docs.map((doc) => [
-            doc.id,
-            doc.data() as Omit<Course, "id">,
-            ])
-        );
-
-        for (const sessionDoc of activeSessionsSnapshot.docs) {
-            const sessionData = {
-            id: sessionDoc.id,
-            ...(sessionDoc.data() as Omit<Session, "id">),
-            };
-            const courseData = coursesMap.get(sessionData.courseId);
-            if (
-            courseData &&
-            courseData.department === studentData.department &&
-            courseData.level === studentData.level
-            ) {
-            matchedSession = sessionData;
-            courseName = courseData.name;
-            break;
-            }
-        }
-      }
-
-      setStatusMessage("Verified");
-      setScanState("success");
-
-      let attendancePercentage = 0;
-      if (matchedSession) {
-          const courseSessionsQuery = query(
-            collection(db, "sessions"),
-            where("courseId", "==", matchedSession.courseId)
-          );
-          const courseSessionsSnap = await getDocs(courseSessionsQuery);
-          const totalClasses = courseSessionsSnap.size;
-
-          const studentAttendanceQuery = query(
-            collection(db, "attendance"),
-            where("studentId", "==", studentData.id),
-            where("courseId", "==", matchedSession.courseId)
-          );
-          const studentAttendanceSnap = await getDocs(studentAttendanceQuery);
-          const attendedClasses = studentAttendanceSnap.size;
-
-          attendancePercentage =
-            totalClasses > 0
-              ? Math.round((attendedClasses / totalClasses) * 100)
-              : 0;
-      }
-
-      setCardData({
-        name: studentData.name,
-        studentId: studentData.studentId,
-        department: studentData.department,
-        courseName: courseName,
-        attendancePercentage,
-      });
-    } catch (error) {
-      console.error("Portal Display Error:", error);
-      setScanState("error");
-      setStatusMessage("System Error");
-    }
-  };
-
   const handleStartVerification = () => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      setScanState("error");
-      setStatusMessage("Not connected");
+      setStatusModal({
+          isOpen: true,
+          type: 'error',
+          title: 'Connection Error',
+          message: 'The system is not connected to the bridge server.'
+      });
       return;
     }
     
     if (gpsStatus !== "ready") {
-        // Warn user but allow override if they really want to (or just block)
-        // For now, let's block to enforce "wait for calibration"
-        setScanState("error");
-        setStatusMessage("Wait for GPS Sync...");
+        setStatusModal({
+            isOpen: true,
+            type: 'warning',
+            title: 'GPS Offline',
+            message: 'Waiting for satellite synchronization. Please wait for GPS Lock.'
+        });
         return;
     }
 
@@ -316,6 +248,14 @@ export default function FingerprintPortal() {
     <div className="min-h-screen  bg-black-800  flex flex-col items-center justify-center p-6">
       
       {cardData && <AttendanceCard data={cardData} onClose={handleCloseCard} />}
+      
+      <StatusModal 
+        isOpen={statusModal.isOpen} 
+        onClose={() => setStatusModal(prev => ({ ...prev, isOpen: false }))}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+      />
 
       <div className="w-full max-w-md">
         {/* Header */}
@@ -333,8 +273,6 @@ export default function FingerprintPortal() {
                    <span>{gpsStatus === "ready" ? "GPS LOCKED" : gpsStatus === "searching" ? "ACQUIRING..." : "OFFLINE"}</span>
                </div>
           </div>
-
-
           <h1 className="text-3xl font-semibold text-gray-300 mb-2">
             Biometric Login
           </h1>
@@ -360,7 +298,6 @@ export default function FingerprintPortal() {
                     : "bg-transparent"
                 }`}
               />
-
               {/* Icon circle */}
               <div
                 className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${

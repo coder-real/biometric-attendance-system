@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 // --- CONFIGURATION ---
 const WS_PORT = 5000;
-const ESP32_IP = "192.168.137.116"; // Your ESP32's IP address 192.168.137.116
+const ESP32_IP = "192.168.137.77"; // Your ESP32's IP address 192.168.137.116
 
 
 const ESP32_PORT = 8080; // ESP32 WebSocket server port
@@ -252,6 +252,16 @@ function handleESP32Message(data) {
     // 3. Broadcast Final Payload
     broadcastToWebClients(finalPayload);
   }
+
+  // Handle clear all response
+  if (data.type === "CLEAR_ALL_RESPONSE") {
+    console.log(
+      `Clear All ${data.success ? "SUCCESS" : "FAILED"}${
+        data.error ? ` - Error: ${data.error}` : ""
+      }`
+    );
+    broadcastToWebClients(data);
+  }
 }
 
 // Send command to ESP32
@@ -315,8 +325,11 @@ function handleWebClientCommand(message) {
   try {
       if (message.trim().startsWith("{")) {
           const jsonMsg = JSON.parse(message);
-          if (jsonMsg.type === "SIGNED_OUT" || jsonMsg.type === "SESSION_COMPLETED") {
-              console.log(`Broadcasting ${jsonMsg.type} for ${jsonMsg.studentName}`);
+          // Rebroadcast attendance-related messages to all clients
+          if (jsonMsg.type === "ATTENDANCE" || jsonMsg.type === "SIGNED_OUT" || 
+              jsonMsg.type === "SESSION_COMPLETED" || jsonMsg.type === "NO_ACTIVE_SESSION" ||
+              jsonMsg.type === "NO_MATCHING_SESSION") {
+              console.log(`Broadcasting ${jsonMsg.type}${jsonMsg.studentName ? ` for ${jsonMsg.studentName}` : ''}`);
               broadcastToWebClients(jsonMsg);
               return;
           }
@@ -340,6 +353,9 @@ function handleWebClientCommand(message) {
   } else if (message === "GET_STATUS") {
     command = "GET_STATUS";
     console.log("Requesting status from ESP32");
+  } else if (message === "CLEAR_ALL_FINGERPRINTS") {
+    command = "CLEAR_ALL_FINGERPRINTS";
+    console.log("Sending clear all fingerprints command to ESP32");
   } else {
     console.log(`Unknown command: ${message}`);
     return;

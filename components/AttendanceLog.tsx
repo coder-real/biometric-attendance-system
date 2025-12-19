@@ -4,7 +4,10 @@ import { db } from '../services/firebase';
 import { AttendanceRecord, Attendance, Student, Course } from '../types';
 import Spinner from './Spinner';
 import LocationModal from './LocationModal';
-import { Download, CheckCircle, XCircle } from 'lucide-react';
+import { Download, CheckCircle, XCircle, Trash2, Filter } from 'lucide-react';
+import Toast from './Toast';
+import ConfirmModal from './ConfirmModal';
+import { deleteDoc, doc, writeBatch } from 'firebase/firestore';
 
 export default function AttendanceLog() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -12,6 +15,15 @@ export default function AttendanceLog() {
   const [courses, setCourses] = useState<Map<string, Course>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<{lat: number, lon: number} | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<string>('all'); // 'all' or courseId
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   useEffect(() => {
     const fetchStudentsAndCourses = async () => {
@@ -44,12 +56,22 @@ export default function AttendanceLog() {
     });
 
     return () => unsubscribe();
-    return () => unsubscribe();
   }, []);
 
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   const exportToCSV = () => {
+    const dataToExport = selectedCourse === 'all' ? enrichedAttendance : filteredAttendance;
+    const courseName = selectedCourse === 'all' ? 'All_Courses' : courses.get(selectedCourse)?.name?.replace(/\s+/g, '_') || 'Unknown';
+    
     const headers = ["Student Name", "Course Name", "Join Time", "Sign Out Time", "Status", "Latitude", "Longitude", "Location"];
-    const rows = enrichedAttendance.map(record => [
+    const rows = dataToExport.map(record => [
         record.studentName,
         record.courseName,
         record.joinTime.toDate().toLocaleString(),
@@ -70,7 +92,7 @@ export default function AttendanceLog() {
     if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
-        link.setAttribute("download", "attendance_log.csv");
+        link.setAttribute("download", `attendance_${courseName}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -86,6 +108,94 @@ export default function AttendanceLog() {
     }));
   }, [attendance, students, courses]);
 
+  const filteredAttendance = useMemo<AttendanceRecord[]>(() => {
+    if (selectedCourse === 'all') {
+      return enrichedAttendance;
+    }
+    return enrichedAttendance.filter(att => att.courseId === selectedCourse);
+  }, [enrichedAttendance, selectedCourse]);
+
+  const handleClearHistory = () => {
+    if (attendance.length === 0) return;
+
+    setConfirmModal({
+        isOpen: true,
+        title: 'Clear All History',
+        message: `Are you sure you want to delete ALL ${attendance.length} attendance records?\n\nThis action CANNOT be undone.`,
+        onConfirm: async () => {
+            setConfirmModal({ ...confirmModal, isOpen: false });
+            setLoading(true);
+
+            try {
+                // Determine which records to delete (filtered or all? User asked for "all csv logs", likely implies all visible or all globally)
+                // Let's stick to "All logs currently loaded" (which is global attendance based on the query)
+                // If filtering is applied, we should probably ask if they delete ALL or just Filtered.
+                // For simplicity/safety, let's delete ALL records found in the `attendance` state.
+                
+                const batchSize = 500;
+                const recordsToDelete = attendance; // All records
+                
+                for (let i = 0; i < recordsToDelete.length; i += batchSize) {
+                    const batch = writeBatch(db);
+                    const chunk = recordsToDelete.slice(i, i + batchSize);
+                    
+                    chunk.forEach(record => {
+                        const ref = doc(db, "attendance", record.id);
+                        batch.delete(ref);
+                    });
+                    
+                    await batch.commit();
+                }
+
+                setToast({
+                    type: 'success',
+                    message: 'All attendance history cleared successfully.'
+                });
+            } catch (error) {
+                console.error("Error clearing history:", error);
+                setToast({
+                    type: 'error',
+                    message: 'Failed to clear history.'
+                });
+            } finally {
+                setLoading(false);
+            }
+        }
+    });
+  };
+
+  const handleDeleteLog = (record: AttendanceRecord) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Attendance Record',
+      message: `Are you sure you want to delete this attendance record?\n\n` +
+        `Student: ${record.studentName}\n` +
+        `Course: ${record.courseName}\n` +
+        `Time: ${record.joinTime.toDate().toLocaleString()}\n\n` +
+        `This action cannot be undone!`,
+      onConfirm: async () => {
+        setConfirmModal({ ...confirmModal, isOpen: false });
+        setDeletingLogId(record.id);
+        
+        try {
+          await deleteDoc(doc(db, "attendance", record.id));
+          setToast({
+            type: 'success',
+            message: 'Attendance record deleted successfully!'
+          });
+        } catch (error) {
+          console.error("Error deleting attendance:", error);
+          setToast({
+            type: 'error',
+            message: 'Failed to delete attendance record.'
+          });
+        } finally {
+          setDeletingLogId(null);
+        }
+      }
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
@@ -96,15 +206,48 @@ export default function AttendanceLog() {
 
   return (
     <div className="bg-white shadow-xl rounded-lg p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Live Attendance Log</h1>
-        <button 
-            onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-            <Download size={18} />
-            Export CSV
-        </button>
+      <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Live Attendance Log</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {filteredAttendance.length} {filteredAttendance.length === 1 ? 'record' : 'records'}
+            {selectedCourse !== 'all' && ` for ${courses.get(selectedCourse)?.name}`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg">
+            <Filter size={16} className="text-gray-500" />
+            <select
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              className="bg-transparent border-none text-sm text-gray-900 focus:ring-0 focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Courses</option>
+              {Array.from(courses.values()).map((course: Course) => (
+                <option key={course.id} value={course.id}>
+                  {course.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button 
+              onClick={exportToCSV}
+              disabled={filteredAttendance.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
+              <Download size={18} />
+              Export CSV
+          </button>
+          
+          <button 
+              onClick={handleClearHistory}
+              disabled={loading || attendance.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 border border-red-200 rounded-lg hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+              <Trash2 size={18} />
+              Clear History
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
@@ -116,10 +259,11 @@ export default function AttendanceLog() {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coordinates</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Map</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {enrichedAttendance.length > 0 ? enrichedAttendance.map((record) => (
+            {filteredAttendance.length > 0 ? filteredAttendance.map((record) => (
               <tr key={record.id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.studentName}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.courseName}</td>
@@ -174,10 +318,21 @@ export default function AttendanceLog() {
                         <span className="text-gray-400">—</span>
                     )}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <button
+                    onClick={() => handleDeleteLog(record)}
+                    disabled={deletingLogId === record.id}
+                    className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                    title="Delete record"
+                  >
+                    <Trash2 size={16} />
+                    {deletingLogId === record.id && <span className="text-xs">Deleting...</span>}
+                  </button>
+                </td>
               </tr>
             )) : (
               <tr>
-                <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">No attendance records yet.</td>
+                <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">No attendance records yet.</td>
               </tr>
             )}
           </tbody>
@@ -189,6 +344,24 @@ export default function AttendanceLog() {
         onClose={() => setSelectedLocation(null)}
         latitude={selectedLocation?.lat}
         longitude={selectedLocation?.lon}
+      />
+
+      {toast && (
+        <Toast
+          type={toast.type}
+          message={toast.message}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant="danger"
+        confirmText="Delete"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
       />
     </div>
   );
